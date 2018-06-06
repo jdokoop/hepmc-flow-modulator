@@ -29,6 +29,9 @@ TF1 *f_v2_40_60;
 // Functions
 //---------------------------------
 
+/*
+ * Take published data points and construct TGraphError objects
+ */
 void constructTGraphs()
 {
 	//v2(pT) for 0-20% centrality
@@ -59,9 +62,44 @@ void constructTGraphs()
 	                     0.063636364,
 	                     0.054545455
 	                    };
+
+	float v2_ex[12] = {0.0};
+	float v2_ey[12] = {0.0};
+
+	g_v2_0_20 = new TGraphErrors(12, pT_0_20, v2_0_20, v2_ex, v2_ey);
+}
+
+
+/*
+ * Fit v2(pT) for the 0-20% centrality
+ */
+void fit_v2_0_20()
+{
+	f_v2_0_20 = new TF1("f_v2_0_20", "pol5", 0, 10);
+	g_v2_0_20->Fit("f_v2_0_20", "Q0R");
+}
+
+
+/*
+ * Draw published points and fits
+ */
+void draw()
+{
+	g_v2_0_20->SetMarkerStyle(20);
+	g_v2_0_20->SetMarkerColor(kBlue);
+
+	TCanvas *c_v2_0_20 = new TCanvas("c_v2_0_20", "v_{2} 0-20", 500, 500);
+	g_v2_0_20->SetTitle("");
+	g_v2_0_20->GetYaxis()->SetRangeUser(0.0, 0.4);
+	g_v2_0_20->GetYaxis()->SetTitle("v_{2}");
+	g_v2_0_20->GetXaxis()->SetTitle("p_{T} [GeV/c]");
+	g_v2_0_20->Draw("AP");
+	f_v2_0_20->Draw("same");
 }
 
 void fit_vn()
 {
-
+	constructTGraphs();
+	fit_v2_0_20();
+	draw();
 }
