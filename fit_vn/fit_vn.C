@@ -102,4 +102,9 @@ void fit_vn()
 	constructTGraphs();
 	fit_v2_0_20();
 	draw();
+
+	//Save functions
+	TFile *fout = new TFile("f_v2_param.root", "RECREATE");
+	f_v2_0_20->Write();
+	fout->Close();
 }
