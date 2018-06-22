@@ -26,23 +26,66 @@ struct particle {
 //Particles in a given event
 std::vector<particle> event_particles;
 
+//Parameterization of v2(pT) for each centrality
+//For now, just use 0-20% central events
+TF1 *f_v2_0_20;
+
+//Mapping from uniform distribution to azimuthal flow modulation
+TH1F *h_map;
+
 //---------------------------------
 // Functions
 //---------------------------------
 
+/*
+ * For a given event, take the particle list, the impact parameter,
+ * and the event plane angle and add flow modulations based on
+ * particle pT and event centrality
+ */
 void processEvent(float b, float psi)
 {
-	cout << b << "  " << psi <<  "   " << event_particles.size() <<endl;    
+	/*
+	cout << b << "   " << psi << endl;
+	//Azimuthal modulation
+	//TODO: Implement centrality determination; for now, assume everything is central
+	TF1 *f_modulation = new TF1("f_modulation", "1 + 2*[0]*TMath::Cos(2*x)", 0, 2 * TMath::Pi());
+
+	//Loop over event particles
+	for (int i = 0; i < event_particles.size(); i++)
+	{
+		particle p = event_particles[i];
+		float pT = TMath::Sqrt(p.px * p.px + p.py * p.py);
+		float v2 = f_v2_0_20->Eval(pT);
+		f_modulation->SetParameter(0, v2);
+
+		//Randomize orientation of momentum in xy plane
+		float phi = f_modulation->GetRandom();
+		p.px = pT *TMath::Cos(phi + psi);
+		p.py = pT *TMath::Sin(phi + psi);
+	}
+
 	event_particles.clear();
+	*/
 }
 
-
+/*
+ * Take a HepMC file, from HIJING output, and parse it line by line.
+ * For every event, the final-state particles are stored in a vector and processed to add flow modulations
+ */
 void read_hepmc()
 {
+	//Load mapping from a uniform azimuthal distribution to a flow modulation
+	TFile *f_mapping = new TFile("flow_maps.root");
+	h_map = (TH1F*) f_mapping->Get("h_map_28");
+
+	//Load vn parameterizations
+	TFile *f_param = new TFile("fit_vn/f_v2_param.root");
+	f_v2_0_20 = (TF1*) f_param->Get("f_v2_0_20");
+
 	//Load in HepMC file and parse line by line
 	ifstream infile("sHijing.dat");
 	string line;
-	
+
 	int evtnumber = 0;
 	float b, psi;
 
@@ -54,7 +97,7 @@ void read_hepmc()
 			evtnumber++;
 
 			//If this is not the first event, process the particles in the previous event
-			if(evtnumber > 1)
+			if (evtnumber > 1)
 			{
 				processEvent(b, psi);
 			}
@@ -101,8 +144,9 @@ void read_hepmc()
 			int num_entries;
 
 			stringstream s(line);
-			if(!(s >> junk1 >> barcode >> pid >> px >> py >> pz >> energy >> mass >> status >> pol_theta >> pol_phi >> barcode_vtx >> num_entries)) break;
+			if (!(s >> junk1 >> barcode >> pid >> px >> py >> pz >> energy >> mass >> status >> pol_theta >> pol_phi >> barcode_vtx >> num_entries)) break;
 
+			//Store it in the vector containing the particles of the event at hand
 			particle p;
 			p.px = px;
 			p.py = py;
@@ -110,7 +154,7 @@ void read_hepmc()
 		}
 
 		//If we reach the end of the file, process the last event
-		if(line == "HepMC::IO_GenEvent-END_EVENT_LISTING")
+		if (line == "HepMC::IO_GenEvent-END_EVENT_LISTING")
 		{
 			processEvent(b, psi);
 		}
