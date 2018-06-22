@@ -34,6 +34,9 @@ int n_v2_steps = (V2HI - V2LO)/v2_step_size;
 //Mapping from phi to phi' for a range of v2 values
 std::vector<TH1F*> h_map;
 
+//Histogram to document which v2 value each entry in h_map corresponds to
+TH1F *h_index;
+
 //Number of phi values for every map
 const int NPHIVALS = 100;
 
@@ -91,6 +94,9 @@ float secant(float x1, float x2, float E)
 
 void compute_flow_mapping()
 {
+	//Initialize index, which tells you what v2 values a given mapping corresponds to
+	h_index = new TH1F("h_index", "", n_v2_steps, -0.5, n_v2_steps - 0.5);
+
 	//Loop over the range of desired v2 values
 	for(int i=0; i<n_v2_steps; i++)
 	{
@@ -99,6 +105,7 @@ void compute_flow_mapping()
 
 		//Current value of v2
 		v2 = V2LO + v2_step_size*i;
+		h_index->SetBinContent(i+1, v2);
 
 		cout << "Processing Step " << i << " for v2 = " << v2 << endl;
 
@@ -117,4 +124,12 @@ void compute_flow_mapping()
 	}	
 
 	//Write mapping out to file
+	TFile *fout = new TFile("flow_maps.root", "RECREATE");
+	for(int i=0; i<h_map.size(); i++)
+	{
+		h_map[i]->Write();
+	}
+
+	h_index->Write();
+	fout->Close();
 }
