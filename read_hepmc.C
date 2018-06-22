@@ -19,8 +19,14 @@ using namespace std;
 //---------------------------------
 
 struct particle {
+	int barcode;
+	int pdg_id;
 	float px;
 	float py;
+	float pz;
+	float energy;
+	float mass;
+	int status;
 };
 
 //Particles in a given event
@@ -32,6 +38,12 @@ TF1 *f_v2_0_20;
 
 //Mapping from uniform distribution to azimuthal flow modulation
 TH1F *h_map;
+
+//File to write out
+ofstream myfile;
+
+//Event buffer header
+string event_buffer_header = "";
 
 //---------------------------------
 // Functions
@@ -45,6 +57,9 @@ TH1F *h_map;
 void processEvent(float b, float psi)
 {
 	cout << b << "   " << psi << endl;
+
+	myfile << event_buffer_header;
+	event_buffer_header = "";
 
 	//Loop over event particles
 	for (int i = 0; i < event_particles.size(); i++)
@@ -71,6 +86,8 @@ void processEvent(float b, float psi)
 
 		p.px = pT * TMath::Cos(phi_prime + psi);
 		p.py = pT * TMath::Sin(phi_prime + psi);
+
+		myfile << "P " << p.barcode << " " << p.pdg_id << " " << p.px << " " << p.py << " " << p.pz << " " << p.energy << " " << p.mass << " " << " " << p.status << " 0 0 0 0" << endl;
 	}
 
 	event_particles.clear();
@@ -94,14 +111,21 @@ void read_hepmc()
 	ifstream infile("sHijing.dat");
 	string line;
 
+	//Open file to write out modified HepMC file
+	myfile.open ("sHijing.modif.dat");
+
 	int evtnumber = 0;
 	float b, psi;
 
 	while (getline(infile, line))
 	{
+		//If this is not a particle line, write it out to the modified file
+		//if (line.c_str()[0] != 'P' && line.c_str()[0] != 'E')	myfile << line << endl;
+
 		//Have we found a new event?
 		if (line.c_str()[0] == 'E')
 		{
+			myfile << line << endl;
 			evtnumber++;
 
 			//If this is not the first event, process the particles in the previous event
@@ -112,7 +136,9 @@ void read_hepmc()
 
 			//Look two lines down for impact parameter and event plane information
 			getline(infile, line);
+			event_buffer_header = event_buffer_header + line + '\n';
 			getline(infile, line);
+			event_buffer_header = event_buffer_header + line + '\n';
 
 			string junk1;
 			float n_hardscat;
@@ -158,6 +184,12 @@ void read_hepmc()
 			particle p;
 			p.px = px;
 			p.py = py;
+			p.pz = pz;
+			p.barcode = barcode;
+			p.pdg_id = pid;
+			p.energy = energy;
+			p.mass = mass;
+			p.status = status;
 			event_particles.push_back(p);
 		}
 
