@@ -29,9 +29,6 @@ struct particle {
 	int status;
 };
 
-//Particles in a given event
-std::vector<particle> event_particles;
-
 //Parameterization of v2(pT) for each centrality
 //For now, just use 0-20% central events
 TF1 *f_v2_0_20;
@@ -42,56 +39,114 @@ TH1F *h_map;
 //File to write out
 ofstream myfile;
 
-//Event buffer header
-string event_buffer_header = "";
+//Reaction plane angle and impact parameter for the event at hand
+float current_psi;
+float current_b;
+
+TH1F *h_phi = new TH1F("h_phi", "", 100, 0, 2 * TMath::Pi());
+TH1F *h_phi_prime = new TH1F("h_phi_prime", "", 100, 0, 2 * TMath::Pi());
+
+TProfile *h_v2 = new TProfile("h_v2", ";p_{T};v_{2}", 50, 0, 5, -10, 10);
+TProfile *h_v2_modif = new TProfile("h_v2_modif", ";p_{T};v_{2}", 50, 0, 5, -10, 10);
 
 //---------------------------------
 // Functions
 //---------------------------------
 
 /*
- * For a given event, take the particle list, the impact parameter,
+ *
+ */
+float f(float x, float phi, float v2)
+{
+	//This transcendental equation comes from solving the differential equation described in documentation.pptx
+	float f = x + v2 * TMath::Sin(2 * x) - phi - 0.5;
+	return f;
+}
+
+
+/*
+ *
+ */
+float secant(float x1, float x2, float E, float phi, float v2)
+{
+	//Code from https://www.geeksforgeeks.org/program-to-find-root-of-an-equations-using-secant-method/
+
+	float n = 0, xm, x0, c;
+	if (f(x1, phi, v2) * f(x2, phi, v2) < 0) {
+		do {
+			// calculate the intermediate value
+			x0 = (x1 * f(x2, phi, v2) - x2 * f(x1, phi, v2)) / (f(x2, phi, v2) - f(x1, phi, v2));
+
+			// check if x0 is root of equation or not
+			c = f(x1, phi, v2) * f(x0, phi, v2);
+
+			// update the value of interval
+			x1 = x2;
+			x2 = x0;
+
+			// update number of iteration
+			n++;
+
+			// if x0 is the root of equation then break the loop
+			if (c == 0)
+				break;
+			xm = (x1 * f(x2, phi, v2) - x2 * f(x1, phi, v2)) / (f(x2, phi, v2) - f(x1, phi, v2));
+		} while (fabs(xm - x0) >= E); // repeat the loop
+		// until the convergence
+
+		return x0;
+	}
+	else {
+		return -9999;
+	}
+}
+
+
+/*
+ * For a given particle, take the event impact parameter,
  * and the event plane angle and add flow modulations based on
  * particle pT and event centrality
  */
-void processEvent(float b, float psi)
+particle processParticle(particle p)
 {
-	cout << b << "   " << psi << endl;
+	float pT = TMath::Sqrt(p.px * p.px + p.py * p.py);
+	float phi = TMath::ATan2(p.py, p.px);
 
-	myfile << event_buffer_header;
-	event_buffer_header = "";
+	//The range of ATan2 is [-pi, pi], so add pi to distribute the particles within [0, 2pi]
+	phi = phi + TMath::Pi();
+	h_phi->Fill(phi);
 
-	//Loop over event particles
-	for (int i = 0; i < event_particles.size(); i++)
+	//Eventually, we will select the mapping based on the v2 corresponding to the particle pT
+	//float v2 = f_v2_0_20->Eval(pT);
+	float v2 = 0.5;
+
+	//Apply mapping
+	float phi_prime = secant(0, 20, 1E-3, phi, v2);
+
+	//Wrap phi_prime around
+	if (phi_prime > 2 * TMath::Pi())
 	{
-		particle p = event_particles[i];
-		float pT = TMath::Sqrt(p.px * p.px + p.py * p.py);
-		float phi = TMath::ATan2(p.py, p.px);
-
-		//Eventually, we will select the mapping based on the v2 corresponding to the particle pT
-		//float v2 = f_v2_0_20->Eval(pT);
-
-		//Apply mapping
-		int bin = h_map->FindBin(phi);
-		float phi_prime = h_map->GetBinContent(bin);
-
-		if (phi_prime > 2 * TMath::Pi())
-		{
-			phi_prime = phi_prime - 2 * TMath::Pi();
-		}
-		else if (phi_prime < 0)
-		{
-			phi_prime = phi_prime + 2 * TMath::Pi();
-		}
-
-		p.px = pT * TMath::Cos(phi_prime + psi);
-		p.py = pT * TMath::Sin(phi_prime + psi);
-
-		myfile << "P " << p.barcode << " " << p.pdg_id << " " << p.px << " " << p.py << " " << p.pz << " " << p.energy << " " << p.mass << " " << " " << p.status << " 0 0 0 0" << endl;
+		phi_prime = phi_prime - 2 * TMath::Pi();
+	}
+	else if (phi_prime < 0)
+	{
+		phi_prime = phi_prime + 2 * TMath::Pi();
 	}
 
-	event_particles.clear();
+	h_phi_prime->Fill(phi_prime);
+
+	//p.px = pT * TMath::Cos(phi_prime + current_psi);
+	//p.py = pT * TMath::Sin(phi_prime + current_psi);
+
+	p.px = pT * TMath::Cos(phi_prime);
+	p.py = pT * TMath::Sin(phi_prime);
+
+	h_v2->Fill(pT, TMath::Cos(2 * phi));
+	h_v2_modif->Fill(pT, TMath::Cos(2 * phi_prime));
+
+	return p;
 }
+
 
 /*
  * Take a HepMC file, from HIJING output, and parse it line by line.
@@ -120,25 +175,18 @@ void read_hepmc()
 	while (getline(infile, line))
 	{
 		//If this is not a particle line, write it out to the modified file
-		//if (line.c_str()[0] != 'P' && line.c_str()[0] != 'E')	myfile << line << endl;
+		if (line.c_str()[0] != 'P')	myfile << line << endl;
 
 		//Have we found a new event?
 		if (line.c_str()[0] == 'E')
 		{
-			myfile << line << endl;
 			evtnumber++;
-
-			//If this is not the first event, process the particles in the previous event
-			if (evtnumber > 1)
-			{
-				processEvent(b, psi);
-			}
 
 			//Look two lines down for impact parameter and event plane information
 			getline(infile, line);
-			event_buffer_header = event_buffer_header + line + '\n';
+			myfile << line << endl;
 			getline(infile, line);
-			event_buffer_header = event_buffer_header + line + '\n';
+			myfile << line << endl;
 
 			string junk1;
 			float n_hardscat;
@@ -158,8 +206,8 @@ void read_hepmc()
 			stringstream s(line);
 			if (!(s >> junk1 >> n_hardscat >> n_proj_part >> n_targ_part >> n_coll >> n_spect_n >> n_spect_p >> n_wound1 >> n_wound2 >> n_wound3 >> impact_par >> ep_angle >> eccen >> cross_sec)) break;
 
-			b = impact_par;
-			psi = ep_angle;
+			current_b = impact_par;
+			current_psi = ep_angle;
 		}
 
 		//Have we found a particle?
@@ -190,13 +238,18 @@ void read_hepmc()
 			p.energy = energy;
 			p.mass = mass;
 			p.status = status;
-			event_particles.push_back(p);
-		}
 
-		//If we reach the end of the file, process the last event
-		if (line == "HepMC::IO_GenEvent-END_EVENT_LISTING")
-		{
-			processEvent(b, psi);
+			particle p_modif = processParticle(p);
+			myfile << "P " << p_modif.barcode << " " << p_modif.pdg_id << " " << p_modif.px << " " << p_modif.py << " " << p_modif.pz << " " << p_modif.energy << " " << p_modif.mass << " " << " " << p_modif.status << " 0 0 0 0" << endl;
 		}
 	}
+
+	TCanvas *c1 = new TCanvas("c1", "c1", 600, 600);
+	h_phi->Draw();
+
+	TCanvas *c2 = new TCanvas("c2", "c2", 600, 600);
+	h_phi_prime->Draw();
+
+	TCanvas *c3 = new TCanvas("c3", "c3", 600, 600);
+	h_v2_modif->Draw();
 }
