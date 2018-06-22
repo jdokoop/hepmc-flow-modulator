@@ -44,28 +44,36 @@ TH1F *h_map;
  */
 void processEvent(float b, float psi)
 {
-	/*
 	cout << b << "   " << psi << endl;
-	//Azimuthal modulation
-	//TODO: Implement centrality determination; for now, assume everything is central
-	TF1 *f_modulation = new TF1("f_modulation", "1 + 2*[0]*TMath::Cos(2*x)", 0, 2 * TMath::Pi());
 
 	//Loop over event particles
 	for (int i = 0; i < event_particles.size(); i++)
 	{
 		particle p = event_particles[i];
 		float pT = TMath::Sqrt(p.px * p.px + p.py * p.py);
-		float v2 = f_v2_0_20->Eval(pT);
-		f_modulation->SetParameter(0, v2);
+		float phi = TMath::ATan2(p.py, p.px);
 
-		//Randomize orientation of momentum in xy plane
-		float phi = f_modulation->GetRandom();
-		p.px = pT *TMath::Cos(phi + psi);
-		p.py = pT *TMath::Sin(phi + psi);
+		//Eventually, we will select the mapping based on the v2 corresponding to the particle pT
+		//float v2 = f_v2_0_20->Eval(pT);
+
+		//Apply mapping
+		int bin = h_map->FindBin(phi);
+		float phi_prime = h_map->GetBinContent(bin);
+
+		if (phi_prime > 2 * TMath::Pi())
+		{
+			phi_prime = phi_prime - 2 * TMath::Pi();
+		}
+		else if (phi_prime < 0)
+		{
+			phi_prime = phi_prime + 2 * TMath::Pi();
+		}
+
+		p.px = pT * TMath::Cos(phi_prime + psi);
+		p.py = pT * TMath::Sin(phi_prime + psi);
 	}
 
 	event_particles.clear();
-	*/
 }
 
 /*
