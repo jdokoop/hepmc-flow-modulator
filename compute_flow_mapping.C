@@ -21,10 +21,24 @@ float v2;
 //Value of phi for which we want to compute the mapping
 float phi;
 
+//Range of v2 values to compute mapping
+const float V2LO = 0.02;
+const float V2HI = 0.3;
 
+//Step size in v2
+float v2_step_size = 0.01;
+
+//Number of steps 
+int n_v2_steps = (V2HI - V2LO)/v2_step_size;
 
 //Mapping from phi to phi' for a range of v2 values
-TH1F *h_map[]
+std::vector<TH1F*> h_map;
+
+//Number of phi values for every map
+const int NPHIVALS = 100;
+
+//Step size for secant method
+const float STEPSIZE = 1E-3;
 
 //-----------------------------------
 // Functions
@@ -32,13 +46,13 @@ TH1F *h_map[]
 
 float f(float x)
 {
-	// we are taking equation as x^3+x-1
+	//This transcendental equation comes from solving the differential equation described in documentation.pptx
 	float f = x + v2*TMath::Sin(2*x) - phi - 0.5;
 	return f;
 }
 
 
-void secant(float x1, float x2, float E)
+float secant(float x1, float x2, float E)
 {
 	//Code from https://www.geeksforgeeks.org/program-to-find-root-of-an-equations-using-secant-method/
 
@@ -65,18 +79,42 @@ void secant(float x1, float x2, float E)
 		} while (fabs(xm - x0) >= E); // repeat the loop
 		// until the convergence
 
-		cout << "Root of the given equation=" << x0 << endl;
-		cout << "No. of iterations = " << n << endl;
-	} else
-		cout << "Can not find a root in the given inteval";
+		return x0;
+		//cout << "Root of the given equation=" << x0 << endl;
+		//cout << "No. of iterations = " << n << endl;
+	}
+	else{
+		return -9999;
+		//cout << "Can not find a root in the given inteval";
+	}
 }
 
 void compute_flow_mapping()
 {
-	v2 = 0.5;
-	phi = TMath::Pi();
+	//Loop over the range of desired v2 values
+	for(int i=0; i<n_v2_steps; i++)
+	{
+		//Initialize mapping histogram to be filled for the current value of v2
+		TH1F *h_map_aux = new TH1F(Form("h_map_%i", i), ";#phi;#phi '", NPHIVALS, 0, 2*TMath::Pi());
 
-	// initializing the values
-	float x1 = 0, x2 = 2*TMath::Pi(), E = 0.0001;
-	secant(x1, x2, E);
+		//Current value of v2
+		v2 = V2LO + v2_step_size*i;
+
+		cout << "Processing Step " << i << " for v2 = " << v2 << endl;
+
+		//Loop over all values of phi to populate the mapping
+		for(int j=0; j<NPHIVALS; j++)
+		{
+			phi = (float) j*2*TMath::Pi()/NPHIVALS;
+
+			//Find root of transcendental equation f(x)
+			float phi_prime = secant(0, 20, STEPSIZE);
+			h_map_aux->SetBinContent(j+1, phi_prime);
+ 		}
+
+		//Save mapping
+		h_map.push_back(h_map_aux);
+	}	
+
+	//Write mapping out to file
 }
